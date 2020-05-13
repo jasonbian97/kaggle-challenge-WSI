@@ -55,6 +55,7 @@ class Stage1V0(pl.LightningModule):
         self.hparams = hparams
 
         if hparams.load_pretrained:
+            print("load pretrained weights: ",hparams.pretrained_weights)
             m = utils.OLD_Model_enc()
             state_dict = torch.load(hparams.pretrained_weights)
             m.load_state_dict(state_dict,strict=False) # set strict = False, this will load known weights to model
@@ -135,10 +136,47 @@ class Stage1V0(pl.LightningModule):
         y_total = torch.cat([x['label'] for x in outputs]).view(-1)
         F1_score = f1_score(y_total.cpu(),pred_total.cpu(),average="micro")
         Confusion_matrix = confusion_matrix(y_total.cpu(),pred_total.cpu())
-        print("Confusion_matrix = \n",Confusion_matrix)
+        print("\nConfusion_matrix = \n",Confusion_matrix)
         print("F1=",F1_score)
         tensorboard_logs = {'val_loss': avg_loss,"F1_score":F1_score}
         return {'val_loss': avg_loss, 'log': tensorboard_logs}
+
+
+
+    def on_epoch_start(self):
+        print("\nCall hook function: on_epoch_start")
+        if self.current_epoch == self.hparams.freeze_epochs:
+            self.unfreeze_for_transfer()
+
+    def on_epoch_end(self):
+        print("\nCall hook function: on_epoch_end")
+        self.log_histogram()
+
+    def on_train_start(self):
+        print("\nCall hook function: on_train_start")
+        self.freeze_for_transfer()
+
+    """=============================self-defined function============================="""
+    def log_histogram(self):
+        print("\nlog hist of weights")
+
+        enc_dict = self.enc.state_dict()
+        for name, val in enc_dict.items():
+            self.logger.experiment.add_histogram("encoder/"+name,val,self.current_epoch)
+
+        head_dict = self.head.state_dict()
+        for name, val in head_dict.items():
+            self.logger.experiment.add_histogram("head/" + name, val, self.current_epoch)
+
+    def freeze_for_transfer(self):
+        print("Freeze encoder for {} epochs".format(self.hparams.freeze_epochs))
+        for param in self.enc.parameters():
+            param.requires_grad = False
+
+    def unfreeze_for_transfer(self):
+        print("UnFreeze encoder at {}-th epoch".format(self.hparams.freeze_epochs))
+        for param in self.enc.parameters():
+            param.requires_grad = True
 
     # learning rate warm-up
     # def optimizer_step(self, current_epoch, batch_nb, optimizer, optimizer_i, second_order_closure=None):
@@ -194,20 +232,22 @@ def main(args):
 if __name__ == '__main__':
     parser = ArgumentParser()
     # parser = Trainer.add_argparse_args(parser)
-
+    parser.add_argument('--NOTE', type=str, default="use pretrained model s mean and var when load image", help='')
     parser.add_argument('--arch', type=str, default='resnext50_32x4d_ssl', help='')
     parser.add_argument('--num_class', type=int, default=2, help='')
-    parser.add_argument('--load_pretrained', type=bool, default=False, help='')
+    parser.add_argument('--load_pretrained', type=bool, default=True, help='')
     parser.add_argument('--pretrained_weights', type=str, default="/mnt/ssd2/Projects/ProstateChallenge/output/PretrainedModelLB79/RNXT50_0.pth", help='')
     parser.add_argument('--gpus', type=int, default=1, help='')
     parser.add_argument('--overfit_test', type=bool, default=False, help='')
-    parser.add_argument('--max_epoch', type=int, default=10, help='')
+    parser.add_argument('--max_epoch', type=int, default=20, help='')
 
     parser.add_argument('--img_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/train", help='')
     parser.add_argument('--label_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/Label", help='')
 
     parser.add_argument('--batch_size', type=int, default=32)
-    parser.add_argument('--learning_rate', type=float, default=3e-4)
+    parser.add_argument('--learning_rate', type=float, default=1e-3)
+
+    parser.add_argument('--freeze_epochs', type=int, default=10)
 
     parser = Stage1V0.add_model_specific_args(parser)
 

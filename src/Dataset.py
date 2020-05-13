@@ -6,10 +6,10 @@ import os
 import json
 
 
+# Level1_128_rich_mean = [0.80566824, 0.59932643, 0.73495563]
+# Level1_128_rich_std = [0.02481834, 0.06068507, 0.02895263]
 Level1_128_rich_mean = [0.45271412, 0.45271412, 0.45271412]
 Level1_128_rich_std = [0.33165374, 0.33165374, 0.33165374]
-
-
 
 class Level1_128_rich(Dataset):
     def __init__(self, image_list, label_dir, transform=None):
