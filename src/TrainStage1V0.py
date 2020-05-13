@@ -35,9 +35,9 @@ import json
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateLogger
 from sklearn.metrics import confusion_matrix,f1_score
 from sklearn.model_selection import KFold
-from src.mish_activation import Mish
-import src.Dataset as MyDataset
-import src.utils as utils
+from mish_activation import Mish
+import Dataset as MyDataset
+import utils as utils
 
 class Stage1V0(pl.LightningModule):
 
