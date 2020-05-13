@@ -107,7 +107,7 @@ class Stage1V0(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = Adam(self.parameters(), lr=self.hparams.learning_rate)
         # scheduler = StepLR(optimizer, step_size=300)
-        scheduler = CosineAnnealingLR(optimizer, self.trainer.max_epochs, 10e-8)
+        scheduler = CosineAnnealingLR(optimizer, self.trainer.max_epochs, 1e-7)
         return {"optimizer":optimizer,"lr_scheduler":scheduler}
 
     def training_step(self, batch, batch_idx):
@@ -158,17 +158,18 @@ class Stage1V0(pl.LightningModule):
 def main(args):
     IMAGE_LIST = [os.path.join(args.img_dir,fname) for fname in  os.listdir(args.img_dir)]
     random.shuffle(IMAGE_LIST)
-    LABEL_DIR = args.label_dir
+
     # kf = KFold(n_splits=3,shuffle=True)
     # for train_index, test_index in kf.split(IMAGE_LIST):
+    if args.overfit_test:
+        # first overfitting on small dataset
+        IMAGE_LIST = IMAGE_LIST[:5000]
 
-    # first overfitting on small dataset
-    IMAGE_LIST = IMAGE_LIST[:5000]
-    num_train = int(0.8 * len(IMAGE_LIST))
-
-
+    #split train val
+    num_train = int(0.7 * len(IMAGE_LIST))
     train_list = IMAGE_LIST[:num_train]
     val_list = IMAGE_LIST[num_train:]
+
     print("Num_Train = ", len(train_list))
     print("Num_Val = ", len(val_list))
 
@@ -184,7 +185,7 @@ def main(args):
     trainer = Trainer(checkpoint_callback=checkpoint_callback,
                       callbacks=[lr_logger],
                       gpus=args.gpus,
-                      max_epochs=200,
+                      max_epochs=args.max_epoch,
                       progress_bar_refresh_rate=10)
     trainer.fit(model)
 
@@ -194,18 +195,19 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     # parser = Trainer.add_argparse_args(parser)
 
-    # figure out which model to use
     parser.add_argument('--arch', type=str, default='resnext50_32x4d_ssl', help='')
     parser.add_argument('--num_class', type=int, default=2, help='')
     parser.add_argument('--load_pretrained', type=bool, default=False, help='')
     parser.add_argument('--pretrained_weights', type=str, default="/mnt/ssd2/Projects/ProstateChallenge/output/PretrainedModelLB79/RNXT50_0.pth", help='')
     parser.add_argument('--gpus', type=int, default=1, help='')
+    parser.add_argument('--overfit_test', type=bool, default=False, help='')
+    parser.add_argument('--max_epoch', type=int, default=10, help='')
 
     parser.add_argument('--img_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/train", help='')
     parser.add_argument('--label_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/Label", help='')
 
     parser.add_argument('--batch_size', type=int, default=32)
-    parser.add_argument('--learning_rate', type=float, default=1e-4)
+    parser.add_argument('--learning_rate', type=float, default=3e-4)
 
     parser = Stage1V0.add_model_specific_args(parser)
 
