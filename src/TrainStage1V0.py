@@ -69,7 +69,7 @@ class Stage1V0(pl.LightningModule):
         self.maxpool_branch = nn.MaxPool2d(4)
         self.avgpool_branch = nn.AvgPool2d(4)
         self.head = nn.Sequential(nn.Flatten(), nn.Linear(2 * out_features, 256),
-                                  Mish(), nn.Dropout(0.5), nn.Linear(256, hparams.num_class))
+                                  nn.ReLU(), nn.Dropout(0.5), nn.Linear(256, hparams.num_class))
 
         self.train_list = train_list
         self.val_list = val_list
@@ -245,7 +245,7 @@ if __name__ == '__main__':
     parser.add_argument('--label_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/Label", help='')
 
     parser.add_argument('--batch_size', type=int, default=32)
-    parser.add_argument('--learning_rate', type=float, default=1e-3)
+    parser.add_argument('--learning_rate', type=float, default= 1e-3)
 
     parser.add_argument('--freeze_epochs', type=int, default=10)
 
