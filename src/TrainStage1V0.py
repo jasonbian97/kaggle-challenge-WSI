@@ -91,7 +91,7 @@ class Stage1V0(pl.LightningModule):
         ])
         # data
         trainset = MyDataset.Level1_128_rich(self.train_list,self.hparams.label_dir,transform=train_transformer)
-        return DataLoader(trainset, batch_size=self.hparams.batch_size, drop_last=False, shuffle=True, num_workers=6)
+        return DataLoader(trainset, batch_size=self.hparams.batch_size, drop_last=False, shuffle=True, num_workers=8)
 
     def val_dataloader(self):
         # transforms
@@ -101,8 +101,8 @@ class Stage1V0(pl.LightningModule):
                                  std=MyDataset.Level1_128_rich_std)
         ])
         # data
-        trainset = MyDataset.Level1_128_rich(self.train_list,self.hparams.label_dir,transform=train_transformer)
-        return DataLoader(trainset, batch_size=self.hparams.batch_size, drop_last=False, shuffle=False, num_workers=4)
+        valset = MyDataset.Level1_128_rich(self.val_list,self.hparams.label_dir,transform=train_transformer)
+        return DataLoader(valset, batch_size=self.hparams.batch_size, drop_last=False, shuffle=False, num_workers=8)
 
     def configure_optimizers(self):
         optimizer = Adam(self.parameters(), lr=self.hparams.learning_rate)
