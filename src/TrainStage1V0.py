@@ -45,29 +45,34 @@ class Stage1V0(pl.LightningModule):
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
 
-        parser.add_argument('--batch_size', type=int, default=32)
-        parser.add_argument('--learning_rate', type=float, default=0.001)
+        # parser.add_argument('--batch_size', type=int, default=32)
+        # parser.add_argument('--learning_rate', type=float, default= 1e-4)
         return parser
 
     def __init__(self, hparams, train_list, val_list):
         super().__init__()
 
         self.hparams = hparams
+
         if hparams.load_pretrained:
-            state_dict = torch.load(hparams.pretrained_path)
+            m = utils.OLD_Model_enc()
+            state_dict = torch.load(hparams.pretrained_weights)
+            m.load_state_dict(state_dict,strict=False) # set strict = False, this will load known weights to model
+            self.enc = m.enc
+            out_features = m.out_features
         else:
             m = torch.hub.load('facebookresearch/semi-supervised-ImageNet1K-models', hparams.arch)
+            self.enc = nn.Sequential(*list(m.children())[:-2])
+            out_features = list(m.children())[-1].in_features
+
+        self.maxpool_branch = nn.MaxPool2d(4)
+        self.avgpool_branch = nn.AvgPool2d(4)
+        self.head = nn.Sequential(nn.Flatten(), nn.Linear(2 * out_features, 256),
+                                  Mish(), nn.Dropout(0.5), nn.Linear(256, hparams.num_class))
+
         self.train_list = train_list
         self.val_list = val_list
 
-        children = m.children()
-        children_list = list(children)
-        self.enc = nn.Sequential(*list(m.children())[:-2])
-        nc = list(m.children())[-1].in_features
-        self.maxpool_branch = nn.MaxPool2d(4)
-        self.avgpool_branch = nn.AvgPool2d(4)
-        self.head = nn.Sequential(nn.Flatten(),nn.Linear(2*nc,256),
-                        Mish(), nn.Dropout(0.5),nn.Linear(256,hparams.num_class))
     def forward(self,x):
         x = self.enc(x)
         x = torch.cat([self.avgpool_branch(x),self.maxpool_branch(x)],dim=1)
@@ -193,10 +198,14 @@ if __name__ == '__main__':
     parser.add_argument('--arch', type=str, default='resnext50_32x4d_ssl', help='')
     parser.add_argument('--num_class', type=int, default=2, help='')
     parser.add_argument('--load_pretrained', type=bool, default=False, help='')
+    parser.add_argument('--pretrained_weights', type=str, default="/mnt/ssd2/Projects/ProstateChallenge/output/PretrainedModelLB79/RNXT50_0.pth", help='')
     parser.add_argument('--gpus', type=int, default=1, help='')
 
     parser.add_argument('--img_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/train", help='')
     parser.add_argument('--label_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/Label", help='')
+
+    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--learning_rate', type=float, default=1e-4)
 
     parser = Stage1V0.add_model_specific_args(parser)
 
