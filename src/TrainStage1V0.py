@@ -236,7 +236,7 @@ if __name__ == '__main__':
     # parser = Trainer.add_argparse_args(parser)
     """training strategy"""
     parser.add_argument('--gpus', type=int, default=1, help='')
-    parser.add_argument('--overfit_test', type=bool, default=False, help='')
+    parser.add_argument('--overfit_test', type=int, default=0, help='')
     parser.add_argument('--max_epoch', type=int, default=20, help='')
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--learning_rate', type=float, default= 1e-3)
@@ -248,11 +248,11 @@ if __name__ == '__main__':
     parser.add_argument('--NOTE', type=str, default="use pretrained model s mean and var when load image", help='')
     parser.add_argument('--arch', type=str, default='resnext50_32x4d_ssl', help='')
     parser.add_argument('--num_class', type=int, default=2, help='')
-    parser.add_argument('--load_pretrained', type=bool, default=True, help='')
+    parser.add_argument('--load_pretrained', type=int, default=1, help='')
     parser.add_argument('--pretrained_weights', type=str, default="/mnt/ssd2/Projects/ProstateChallenge/output/PretrainedModelLB79/RNXT50_0.pth", help='')
 
     parser.add_argument('--loss_w1', type=float, default=3., help='CrossEntropy loss weight for Cancerous type')
-    parser.add_argument('--preload', type=bool, default=False, help='default is True. Preload images into RAM')
+    parser.add_argument('--preload', type=int, default=0, help='default is 0. Preload images into RAM')
 
     parser = Stage1V0.add_model_specific_args(parser)
 
