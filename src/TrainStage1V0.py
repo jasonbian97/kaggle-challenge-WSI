@@ -236,7 +236,7 @@ if __name__ == '__main__':
     # parser = Trainer.add_argparse_args(parser)
     """training strategy"""
     parser.add_argument('--gpus', type=int, default=1, help='')
-    parser.add_argument('--overfit_test', type=bool, default=True, help='')
+    parser.add_argument('--overfit_test', type=bool, default=False, help='')
     parser.add_argument('--max_epoch', type=int, default=20, help='')
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--learning_rate', type=float, default= 1e-3)
