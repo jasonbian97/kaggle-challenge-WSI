@@ -91,7 +91,8 @@ class Stage1V0(pl.LightningModule):
                                  std=MyDataset.Level1_128_rich_std)
         ])
         # data
-        trainset = MyDataset.Level1_128_rich(self.train_list,self.hparams.label_dir,transform=train_transformer)
+        trainset = MyDataset.Level1_128_rich(self.train_list,self.hparams.label_dir,
+                                             transform=train_transformer,preload = self.hparams.preload)
         return DataLoader(trainset, batch_size=self.hparams.batch_size, drop_last=False, shuffle=True, num_workers=8)
 
     def val_dataloader(self):
@@ -102,19 +103,20 @@ class Stage1V0(pl.LightningModule):
                                  std=MyDataset.Level1_128_rich_std)
         ])
         # data
-        valset = MyDataset.Level1_128_rich(self.val_list,self.hparams.label_dir,transform=train_transformer)
+        valset = MyDataset.Level1_128_rich(self.val_list,self.hparams.label_dir,
+                                           transform=train_transformer, preload = self.hparams.preload)
         return DataLoader(valset, batch_size=self.hparams.batch_size, drop_last=False, shuffle=False, num_workers=8)
 
     def configure_optimizers(self):
         optimizer = Adam(self.parameters(), lr=self.hparams.learning_rate)
         # scheduler = StepLR(optimizer, step_size=300)
-        scheduler = CosineAnnealingLR(optimizer, self.trainer.max_epochs, 1e-7)
+        scheduler = CosineAnnealingLR(optimizer, self.trainer.max_epochs, 1e-6)
         return {"optimizer":optimizer,"lr_scheduler":scheduler}
 
     def training_step(self, batch, batch_idx):
         data,label = batch
         output = self(data)
-        criterion = nn.CrossEntropyLoss(weight = torch.tensor([1.,2.]).cuda()) # weighted loss
+        criterion = nn.CrossEntropyLoss(weight = torch.tensor([1.,self.hparams.loss_w1]).cuda()) # weighted loss
         loss = criterion(output, label)
         # add logging
         logs = {'loss': loss}
@@ -201,7 +203,7 @@ def main(args):
     # for train_index, test_index in kf.split(IMAGE_LIST):
     if args.overfit_test:
         # first overfitting on small dataset
-        IMAGE_LIST = IMAGE_LIST[:5000]
+        IMAGE_LIST = IMAGE_LIST[:10000]
 
     #split train val
     num_train = int(0.7 * len(IMAGE_LIST))
@@ -232,22 +234,25 @@ def main(args):
 if __name__ == '__main__':
     parser = ArgumentParser()
     # parser = Trainer.add_argparse_args(parser)
+    """training strategy"""
+    parser.add_argument('--gpus', type=int, default=1, help='')
+    parser.add_argument('--overfit_test', type=bool, default=True, help='')
+    parser.add_argument('--max_epoch', type=int, default=20, help='')
+    parser.add_argument('--batch_size', type=int, default=128)
+    parser.add_argument('--learning_rate', type=float, default= 1e-3)
+    parser.add_argument('--freeze_epochs', type=int, default=10)
+    parser.add_argument('--img_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/train", help='')
+    parser.add_argument('--label_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/Label", help='')
+
+    """model selection"""
     parser.add_argument('--NOTE', type=str, default="use pretrained model s mean and var when load image", help='')
     parser.add_argument('--arch', type=str, default='resnext50_32x4d_ssl', help='')
     parser.add_argument('--num_class', type=int, default=2, help='')
     parser.add_argument('--load_pretrained', type=bool, default=True, help='')
     parser.add_argument('--pretrained_weights', type=str, default="/mnt/ssd2/Projects/ProstateChallenge/output/PretrainedModelLB79/RNXT50_0.pth", help='')
-    parser.add_argument('--gpus', type=int, default=1, help='')
-    parser.add_argument('--overfit_test', type=bool, default=False, help='')
-    parser.add_argument('--max_epoch', type=int, default=20, help='')
 
-    parser.add_argument('--img_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/train", help='')
-    parser.add_argument('--label_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/Label", help='')
-
-    parser.add_argument('--batch_size', type=int, default=32)
-    parser.add_argument('--learning_rate', type=float, default= 1e-3)
-
-    parser.add_argument('--freeze_epochs', type=int, default=10)
+    parser.add_argument('--loss_w1', type=float, default=3., help='CrossEntropy loss weight for Cancerous type')
+    parser.add_argument('--preload', type=bool, default=False, help='default is True. Preload images into RAM')
 
     parser = Stage1V0.add_model_specific_args(parser)
 
