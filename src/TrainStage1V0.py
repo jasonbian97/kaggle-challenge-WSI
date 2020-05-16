@@ -237,7 +237,7 @@ def main(args):
     checkpoint_callback = ModelCheckpoint(
         filepath=None,
         monitor='val_loss',
-        save_top_k=2,
+        save_top_k=1,
         mode='min'
     )
     lr_logger = LearningRateLogger()
@@ -247,7 +247,7 @@ def main(args):
                       callbacks=[lr_logger],
                       gpus=args.gpus,
                       max_epochs=args.max_epoch,
-                      progress_bar_refresh_rate=10)
+                      progress_bar_refresh_rate=50)
     trainer.fit(model)
 
 
@@ -267,7 +267,7 @@ if __name__ == '__main__':
 
     """model selection"""
     parser.add_argument('--NOTE', type=str, default="use ImageNet mean and var when load image", help='')
-    parser.add_argument('--arch', type=str, default='efficientnet-b3', help='')
+    parser.add_argument('--arch', type=str, default='efficientnet-b2', help='')
     parser.add_argument('--num_class', type=int, default=2, help='')
     parser.add_argument('--load_pretrained', type=int, default=1, help='')
     parser.add_argument('--pretrained_weights', type=str, default="", help='')
