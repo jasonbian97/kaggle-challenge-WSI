@@ -22,6 +22,9 @@ def _resnext(url, block, layers, pretrained, progress, **kwargs):
 
 import torch
 import torch.nn as nn
+import os
+import json
+
 
 class OLD_Model_enc(nn.Module):
     def __init__(self, arch='resnext50_32x4d_ssl', n=6, pre=True):
@@ -34,3 +37,19 @@ class OLD_Model_enc(nn.Module):
 
     def forward(self, x):
         pass
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

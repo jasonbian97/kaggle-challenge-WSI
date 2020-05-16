@@ -59,7 +59,7 @@ class Stage1V0(pl.LightningModule):
             if hparams.load_pretrained:
                 self.enc = EfficientNet.from_pretrained(hparams.arch)
                 out_features = self.enc.extract_features(torch.rand((1, 3, 128, 128))).shape[1]
-
+                print("Using ", hparams.arch)
         elif hparams.load_pretrained:
             print("load pretrained weights: ",hparams.pretrained_weights)
             m = utils.OLD_Model_enc()
