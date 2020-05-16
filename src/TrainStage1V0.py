@@ -34,6 +34,7 @@ from PIL import Image
 import json
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateLogger
 from sklearn.metrics import confusion_matrix,f1_score
+from efficientnet_pytorch import EfficientNet
 from sklearn.model_selection import KFold
 from mish_activation import Mish
 import Dataset as MyDataset
@@ -54,7 +55,12 @@ class Stage1V0(pl.LightningModule):
 
         self.hparams = hparams
 
-        if hparams.load_pretrained:
+        if hparams.arch.split("-")[0] == "efficientnet":
+            if hparams.load_pretrained:
+                self.enc = EfficientNet.from_pretrained(hparams.arch)
+                out_features = self.enc.extract_features(torch.rand((1, 3, 128, 128))).shape[1]
+
+        elif hparams.load_pretrained:
             print("load pretrained weights: ",hparams.pretrained_weights)
             m = utils.OLD_Model_enc()
             state_dict = torch.load(hparams.pretrained_weights)
@@ -66,16 +72,19 @@ class Stage1V0(pl.LightningModule):
             self.enc = nn.Sequential(*list(m.children())[:-2])
             out_features = list(m.children())[-1].in_features
 
-        self.maxpool_branch = nn.MaxPool2d(4)
-        self.avgpool_branch = nn.AvgPool2d(4)
-        self.head = nn.Sequential(nn.Flatten(), nn.Linear(2 * out_features, 256),
-                                  nn.ReLU(), nn.Dropout(0.5), nn.Linear(256, hparams.num_class))
+        self.maxpool_branch = nn.AdaptiveMaxPool2d(1)
+        self.avgpool_branch = nn.AdaptiveAvgPool2d(1)
+        self.head = nn.Sequential(nn.Flatten(), nn.Linear(2 * out_features, 512),
+                                  nn.ReLU(), nn.Dropout(0.5), nn.Linear(512, hparams.num_class))
 
         self.train_list = train_list
         self.val_list = val_list
 
     def forward(self,x):
-        x = self.enc(x)
+        if self.hparams.arch.split("-")[0] == "efficientnet":
+            x = self.enc.extract_features(x)
+        else:
+            x = self.enc(x)
         x = torch.cat([self.avgpool_branch(x),self.maxpool_branch(x)],dim=1)
         x = self.head(x)
         return x
@@ -87,30 +96,30 @@ class Stage1V0(pl.LightningModule):
             utils.MyRotateTransform([0,90,180,270]),
             transforms.ColorJitter(brightness=0.2,contrast=0.2,saturation=0.2),
             transforms.ToTensor(),
-            transforms.Normalize(mean=MyDataset.Level1_128_rich_mean,
-                                 std=MyDataset.Level1_128_rich_std)
+            transforms.Normalize(mean=MyDataset.ImageNet_mean,
+                                 std=MyDataset.ImageNet_std)
         ])
         # data
         trainset = MyDataset.Level1_128_rich(self.train_list,self.hparams.label_dir,
-                                             transform=train_transformer,preload = self.hparams.preload)
+                                             transform=train_transformer,preload = self.hparams.preload_data)
         return DataLoader(trainset, batch_size=self.hparams.batch_size, drop_last=False, shuffle=True, num_workers=8)
 
     def val_dataloader(self):
         # transforms
         train_transformer = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize(mean=MyDataset.Level1_128_rich_mean,
-                                 std=MyDataset.Level1_128_rich_std)
+            transforms.Normalize(mean=MyDataset.ImageNet_mean,
+                                 std=MyDataset.ImageNet_std)
         ])
         # data
         valset = MyDataset.Level1_128_rich(self.val_list,self.hparams.label_dir,
-                                           transform=train_transformer, preload = self.hparams.preload)
+                                           transform=train_transformer, preload = self.hparams.preload_data)
         return DataLoader(valset, batch_size=self.hparams.batch_size, drop_last=False, shuffle=False, num_workers=8)
 
     def configure_optimizers(self):
         optimizer = Adam(self.parameters(), lr=self.hparams.learning_rate)
         # scheduler = StepLR(optimizer, step_size=300)
-        scheduler = CosineAnnealingLR(optimizer, self.trainer.max_epochs, 1e-6)
+        scheduler = CosineAnnealingLR(optimizer, self.trainer.max_epochs, self.hparams.cosine_scheduler_end_lr)
         return {"optimizer":optimizer,"lr_scheduler":scheduler}
 
     def training_step(self, batch, batch_idx):
@@ -125,21 +134,23 @@ class Stage1V0(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         x, y = batch
         logits = self(x)
-        criterion = nn.CrossEntropyLoss(weight = torch.tensor([1.,2.]).cuda())
+        criterion = nn.CrossEntropyLoss(weight = torch.tensor([1.,self.hparams.loss_w1]).cuda())
         loss = criterion(logits, y)
         # compute confucsion matrix on this batch
         pred = logits.argmax(dim=1).view_as(y)
-        return {'val_loss': loss, "pred":pred, "label":y}
+        return {'val_loss': loss, "pred":pred, "label":y, "logits":logits}
 
     def validation_epoch_end(self, outputs):
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
 
-        pred_total = torch.cat([x['pred'] for x in outputs]).view(-1)
-        y_total = torch.cat([x['label'] for x in outputs]).view(-1)
-        F1_score = f1_score(y_total.cpu(),pred_total.cpu(),average="micro")
-        Confusion_matrix = confusion_matrix(y_total.cpu(),pred_total.cpu())
+        pred_total = torch.cat([x['pred'] for x in outputs]).view(-1).cpu()
+        y_total = torch.cat([x['label'] for x in outputs]).view(-1).cpu()
+        logits_total = torch.cat([x['logits'] for x in outputs],dim=0).cpu()
+        F1_score = f1_score(y_total.cpu(),pred_total,average="micro")
+        Confusion_matrix = confusion_matrix(y_total,pred_total)
         print("\nConfusion_matrix = \n",Confusion_matrix)
         print("F1=",F1_score)
+        self.log_distribution(logits_total,y_total)
         tensorboard_logs = {'val_loss': avg_loss,"F1_score":F1_score}
         return {'val_loss': avg_loss, 'log': tensorboard_logs}
 
@@ -159,6 +170,16 @@ class Stage1V0(pl.LightningModule):
         self.freeze_for_transfer()
 
     """=============================self-defined function============================="""
+    def log_distribution(self,logits,label):
+        fig,ax = plt.subplots()
+        prob = F.softmax(logits, dim=1).numpy()
+        bins = np.linspace(-0.1,1.1,100)
+        cancerous_p = prob[:, 1]
+        ax.hist([cancerous_p[label==0], cancerous_p[label==1]],bins = 50,
+                label = ["Benign","Cancerous"],range = (0,1))
+        ax.legend(loc='upper right')
+        self.logger.experiment.add_figure("2 class prob distribution",fig,self.current_epoch)
+
     def log_histogram(self):
         print("\nlog hist of weights")
 
@@ -237,22 +258,25 @@ if __name__ == '__main__':
     """training strategy"""
     parser.add_argument('--gpus', type=int, default=1, help='')
     parser.add_argument('--overfit_test', type=int, default=0, help='')
-    parser.add_argument('--max_epoch', type=int, default=20, help='')
-    parser.add_argument('--batch_size', type=int, default=128)
+    parser.add_argument('--max_epoch', type=int, default=30, help='')
+    parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--learning_rate', type=float, default= 1e-3)
     parser.add_argument('--freeze_epochs', type=int, default=10)
     parser.add_argument('--img_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/train", help='')
     parser.add_argument('--label_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/Label", help='')
 
     """model selection"""
-    parser.add_argument('--NOTE', type=str, default="use pretrained model s mean and var when load image", help='')
-    parser.add_argument('--arch', type=str, default='resnext50_32x4d_ssl', help='')
+    parser.add_argument('--NOTE', type=str, default="use ImageNet mean and var when load image", help='')
+    parser.add_argument('--arch', type=str, default='efficientnet-b3', help='')
     parser.add_argument('--num_class', type=int, default=2, help='')
     parser.add_argument('--load_pretrained', type=int, default=1, help='')
-    parser.add_argument('--pretrained_weights', type=str, default="/mnt/ssd2/Projects/ProstateChallenge/output/PretrainedModelLB79/RNXT50_0.pth", help='')
+    parser.add_argument('--pretrained_weights', type=str, default="", help='')
+    # /mnt/ssd2/Projects/ProstateChallenge/output/PretrainedModelLB79/RNXT50_0.pth
 
     parser.add_argument('--loss_w1', type=float, default=3., help='CrossEntropy loss weight for Cancerous type')
-    parser.add_argument('--preload', type=int, default=0, help='default is 0. Preload images into RAM')
+    parser.add_argument('--preload_data', type=int, default=0, help='default is 0. Preload images into RAM')
+    parser.add_argument('--cosine_scheduler_end_lr', type=float, default= 5e-6, help='CrossEntropy loss weight for Cancerous type')
+
 
     parser = Stage1V0.add_model_specific_args(parser)
 
