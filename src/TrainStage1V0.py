@@ -217,6 +217,8 @@ class Stage1V0(pl.LightningModule):
 
 
 def main(args):
+    now = datetime.now()
+    time_stamp = now.strftime("%m-%d-%y_%H-%M-%S")
     IMAGE_LIST = [os.path.join(args.img_dir,fname) for fname in  os.listdir(args.img_dir)]
     random.shuffle(IMAGE_LIST)
 
@@ -233,9 +235,12 @@ def main(args):
 
     print("Num_Train = ", len(train_list))
     print("Num_Val = ", len(val_list))
-
+    if args.checkpoint_path:
+        checkpoint_fn = os.path.join(args.checkpoint_path,time_stamp + "_{epoch:02d}-{val_loss:.2f}")
+    else:
+        checkpoint_fn = None
     checkpoint_callback = ModelCheckpoint(
-        filepath=args.checkpoint_path,
+        filepath=checkpoint_fn,
         monitor='val_loss',
         save_top_k=1,
         mode='min'
@@ -247,9 +252,9 @@ def main(args):
                       callbacks=[lr_logger],
                       gpus=args.gpus,
                       max_epochs=args.max_epoch,
-                      progress_bar_refresh_rate=50)
+                      progress_bar_refresh_rate=50,
+                      default_save_path = args.training_log_path)
     trainer.fit(model)
-
 
 
 if __name__ == '__main__':
@@ -264,7 +269,9 @@ if __name__ == '__main__':
     parser.add_argument('--freeze_epochs', type=int, default=10)
     parser.add_argument('--img_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/train", help='')
     parser.add_argument('--label_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/Label", help='')
-
+    parser.add_argument('--checkpoint_path', type=str, default=None,
+                        help='Default is None, the checkpoint will be saved under the training log folder')
+    parser.add_argument('--training_log_path', type=str, default="./", help='')
     """model selection"""
     parser.add_argument('--NOTE', type=str, default="use ImageNet mean and var when load image", help='')
     parser.add_argument('--arch', type=str, default='efficientnet-b2', help='')
@@ -276,9 +283,6 @@ if __name__ == '__main__':
     parser.add_argument('--loss_w1', type=float, default=3., help='CrossEntropy loss weight for Cancerous type')
     parser.add_argument('--preload_data', type=int, default=0, help='default is 0. Preload images into RAM')
     parser.add_argument('--cosine_scheduler_end_lr', type=float, default= 5e-6, help='CrossEntropy loss weight for Cancerous type')
-    parser.add_argument('--checkpoint_path', type=str, default="/mnt/ssd2/Projects/ProstateChallenge/output/", help='')
-
-
 
 
     parser = Stage1V0.add_model_specific_args(parser)

@@ -65,6 +65,7 @@ class V0_Stage2_System(pl.LightningModule):
         self.head = nn.Sequential(nn.Flatten(), nn.Linear(2 * out_features, 512),
                                   nn.ReLU(), nn.Dropout(0.5), nn.Linear(512, hparams.num_class))
         # filter out Benign patches
+        print("filtering out Benign patches...")
         self.train_list = self.filter_out_benign(train_list)
         self.val_list = self.filter_out_benign(val_list)
         print("Num_Train = ", len(self.train_list))
@@ -116,7 +117,7 @@ class V0_Stage2_System(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         data,label = batch
         output = self(data)
-        criterion = nn.SmoothL1Loss()
+        criterion = nn.L1Loss()
         loss = criterion(output, label)
         # add logging
         logs = {'loss': loss}
@@ -125,7 +126,7 @@ class V0_Stage2_System(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         x, y = batch
         logits = self(x)
-        criterion = nn.SmoothL1Loss()
+        criterion = nn.L1Loss()
         loss = criterion(logits, y)
         return {'val_loss': loss}
 
@@ -156,7 +157,7 @@ class V0_Stage2_System(pl.LightningModule):
 
     def filter_out_benign(self, img_list):
         valid_list =[]
-        for img_path in img_list:
+        for img_path in tqdm(img_list):
             # read label
             image_id = img_path.split("/")[-1].split("-")[0]
             patch_id = int(img_path.split("/")[-1].split(".")[0].split("-")[1])
@@ -167,11 +168,11 @@ class V0_Stage2_System(pl.LightningModule):
                 if dict["patches_stat"]["cancerous_tissue_perc"][patch_id - 1] > 0.1:
                     valid_list.append(img_path)
             else:
-                for i in range(dict["patches_num"]):
-                    if dict["patches_stat"]["Gleason_3_perc"][i] > 0.01 or \
-                            dict["patches_stat"]["Gleason_4_perc"][i] > 0.01 or \
-                            dict["patches_stat"]["Gleason_5_perc"][i] > 0.01:
-                        valid_list.append(img_path)
+
+                if dict["patches_stat"]["Gleason_3_perc"][patch_id - 1] > 0.01 or \
+                        dict["patches_stat"]["Gleason_4_perc"][patch_id - 1] > 0.01 or \
+                        dict["patches_stat"]["Gleason_5_perc"][patch_id - 1] > 0.01:
+                    valid_list.append(img_path)
         return valid_list
 
 
@@ -208,6 +209,9 @@ class V0_Stage2_System(pl.LightningModule):
 
 
 def main(args):
+    now = datetime.now()
+    time_stamp = now.strftime("%m-%d-%y_%H-%M-%S")
+
     IMAGE_LIST = [os.path.join(args.img_dir,fname) for fname in  os.listdir(args.img_dir)]
     random.shuffle(IMAGE_LIST)
     # kf = KFold(n_splits=3,shuffle=True)
@@ -221,9 +225,12 @@ def main(args):
     train_list = IMAGE_LIST[:num_train]
     val_list = IMAGE_LIST[num_train:]
     print("train_list:", train_list[:5])
-
+    if args.checkpoint_path:
+        checkpoint_fn = os.path.join(args.checkpoint_path,time_stamp + "_{epoch:02d}-{val_loss:.2f}")
+    else:
+        checkpoint_fn = None
     checkpoint_callback = ModelCheckpoint(
-        filepath=args.checkpoint_path,
+        filepath=checkpoint_fn,
         monitor='val_loss',
         save_top_k=1,
         mode='min'
@@ -231,11 +238,13 @@ def main(args):
     lr_logger = LearningRateLogger()
 
     model = V0_Stage2_System(hparams=args,train_list=train_list,val_list = val_list)
+
     trainer = Trainer(checkpoint_callback=checkpoint_callback,
                       callbacks=[lr_logger],
                       gpus=args.gpus,
                       max_epochs=args.max_epoch,
-                      progress_bar_refresh_rate=50)
+                      progress_bar_refresh_rate=50,
+                      default_save_path = args.training_log_path)
     trainer.fit(model)
 
 if __name__ == '__main__':
@@ -250,7 +259,9 @@ if __name__ == '__main__':
     parser.add_argument('--freeze_epochs', type=int, default=10)
     parser.add_argument('--img_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/train", help='')
     parser.add_argument('--label_dir', type=str, default="/mnt/ssd2/AllDatasets/ProstateDataset/Level1_128_rich/Label", help='')
-
+    parser.add_argument('--checkpoint_path', type=str, default=None,
+                        help='Default is None, the checkpoint will be saved under the training log folder')
+    parser.add_argument('--training_log_path', type=str, default="./", help='')
     """model selection"""
     parser.add_argument('--NOTE', type=str, default="use ImageNet mean and var when load image", help='')
     parser.add_argument('--arch', type=str, default='efficientnet-b2', help='')
@@ -262,7 +273,6 @@ if __name__ == '__main__':
     parser.add_argument('--loss_w1', type=float, default=3., help='CrossEntropy loss weight for Cancerous type')
     parser.add_argument('--preload_data', type=int, default=0, help='default is 0. Preload images into RAM')
     parser.add_argument('--cosine_scheduler_end_lr', type=float, default= 5e-6, help='CrossEntropy loss weight for Cancerous type')
-    parser.add_argument('--checkpoint_path', type=str, default="/mnt/ssd2/Projects/ProstateChallenge/output/", help='')
 
 
     parser = V0_Stage2_System.add_model_specific_args(parser)
