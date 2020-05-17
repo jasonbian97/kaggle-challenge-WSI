@@ -117,7 +117,14 @@ class V0_Stage2_System(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         data,label = batch
         output = self(data)
-        criterion = nn.L1Loss()
+        if self.hparams.loss_type == "L1":
+            criterion = nn.L1Loss()
+        elif self.hparams.loss_type == "L2":
+            criterion = nn.MSELoss()
+        elif self.hparams.loss_type == "SmoothL1":
+            criterion = nn.SmoothL1Loss()
+        else:
+            raise ValueError("Wrong type of loss given")
         loss = criterion(output, label)
         # add logging
         logs = {'loss': loss}
@@ -126,7 +133,14 @@ class V0_Stage2_System(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         x, y = batch
         logits = self(x)
-        criterion = nn.L1Loss()
+        if self.hparams.loss_type == "L1":
+            criterion = nn.L1Loss()
+        elif self.hparams.loss_type == "L2":
+            criterion = nn.MSELoss()
+        elif self.hparams.loss_type == "SmoothL1":
+            criterion = nn.SmoothL1Loss()
+        else:
+            raise ValueError("Wrong type of loss given")
         loss = criterion(logits, y)
         return {'val_loss': loss}
 
@@ -273,6 +287,7 @@ if __name__ == '__main__':
     parser.add_argument('--loss_w1', type=float, default=3., help='CrossEntropy loss weight for Cancerous type')
     parser.add_argument('--preload_data', type=int, default=0, help='default is 0. Preload images into RAM')
     parser.add_argument('--cosine_scheduler_end_lr', type=float, default= 5e-6, help='CrossEntropy loss weight for Cancerous type')
+    parser.add_argument('--loss_type', type=str, default="", help='')
 
 
     parser = V0_Stage2_System.add_model_specific_args(parser)
