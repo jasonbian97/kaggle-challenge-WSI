@@ -235,7 +235,7 @@ def main(args):
     print("Num_Val = ", len(val_list))
 
     checkpoint_callback = ModelCheckpoint(
-        filepath=None,
+        filepath=args.checkpoint_path,
         monitor='val_loss',
         save_top_k=1,
         mode='min'
@@ -276,6 +276,9 @@ if __name__ == '__main__':
     parser.add_argument('--loss_w1', type=float, default=3., help='CrossEntropy loss weight for Cancerous type')
     parser.add_argument('--preload_data', type=int, default=0, help='default is 0. Preload images into RAM')
     parser.add_argument('--cosine_scheduler_end_lr', type=float, default= 5e-6, help='CrossEntropy loss weight for Cancerous type')
+    parser.add_argument('--checkpoint_path', type=str, default="/mnt/ssd2/Projects/ProstateChallenge/output/", help='')
+
+
 
 
     parser = Stage1V0.add_model_specific_args(parser)
